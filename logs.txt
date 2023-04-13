@@ -1,0 +1,6 @@
+CONTAINER ID   IMAGE                           COMMAND                  CREATED          STATUS          PORTS                                       NAMES
+6216686a63bf   adminer                         "entrypoint.sh php -…"   11 minutes ago   Up 11 minutes   0.0.0.0:8090->8080/tcp, :::8090->8080/tcp   authusermicroservice_adminer_1
+4c6e44a04b31   authusermicroservice_authuser   "python manage.py ru…"   12 minutes ago   Up 11 minutes   0.0.0.0:8001->8000/tcp, :::8001->8000/tcp   authusermicroservice_authuser_1
+899101c1bbf3   postgres                        "docker-entrypoint.s…"   12 minutes ago   Up 11 minutes   0.0.0.0:5434->5432/tcp, :::5434->5432/tcp   authusermicroservice_postgres_1
+27f89ebdced2   adminer                         "entrypoint.sh php -…"   36 hours ago     Up 14 minutes   0.0.0.0:8089->8080/tcp, :::8089->8080/tcp   timestampmicroservice_adminer_1
+sdfg sdfg dsf gsfdgsfdgsfdgs
