@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import CustomUserApi, PersonalUserAPI
-from .views import UserLoginView, UserLogoutView ,InvitaionUpdate,InvitationDetail,OrganisationMembersView, OrganisationDetail, InvitationJoin ,CustomUserUpdateApi , RequestJoin , Organisation  , RequestUpdate , RequestDestroy 
+from .views import UserLoginView, keysAPI, UserLogoutView ,InvitaionUpdate,InvitationDetail,OrganisationMembersView, OrganisationDetail, InvitationJoin ,CustomUserUpdateApi , RequestJoin , Organisation  , RequestUpdate , RequestDestroy 
 
 
 urlpatterns = [
@@ -9,6 +9,7 @@ urlpatterns = [
     path('login/', UserLoginView.as_view()),
     path('logout/', UserLogoutView.as_view()),
     path('update/', CustomUserUpdateApi.as_view(), name='user_update'),
+    path('keys/', keysAPI.as_view()),
     # Organisation Urls 
     path('organisation/create/', Organisation.as_view()),
     path('organisation/delete/<int:pk>', OrganisationDetail.as_view()),

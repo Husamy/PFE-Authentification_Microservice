@@ -8,6 +8,7 @@ from .managers import CustomUserManager
 class CustomUser(AbstractUser):
     username = None
     email = models.EmailField(_("email address"), unique=True)
+    isAdmin = models.BooleanField(default=False)
     organisation = models.ForeignKey('Organisation', on_delete=models.SET_NULL, null=True, blank=True,to_field='name')
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -17,14 +18,24 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.email
 
-
+class keys(models.Model):
+    user_id = models.OneToOneField("CustomUser", on_delete=models.CASCADE, to_field='id', unique=True)
+    privateKey = models.CharField(max_length=9999999)
+    publicKey = models.CharField(max_length=9999999)
+    
+    def __str__(self):
+        return self.publicKey
 
 class organisation(models.Model):
     name = models.CharField(max_length=30, unique=True)
+    country_name = models.CharField(max_length=2)
+    state_or_province_name = models.CharField(max_length=2)
+    locality_name = models.CharField(max_length=30)
     description = models.CharField(max_length=300)
     owner = models.ForeignKey('CustomUser', on_delete=models.CASCADE, related_name='owned_organisations', to_field='email')
     members = ArrayField(models.IntegerField(), default=list)
     comment = models.CharField(max_length=300)
+    
     
     def __str__(self):
         return self.name

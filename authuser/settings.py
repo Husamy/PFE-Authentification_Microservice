@@ -53,8 +53,8 @@ REST_FRAMEWORK = {
     )
 }
 
-SIMPLE_JWT = {"SIGNING_KEY": "5ahp8kseKOVB_w"}
-
+SIMPLE_JWT = {"SIGNING_KEY": "5ahp8kseKOVB_w",
+              }
 
 
 MIDDLEWARE = [

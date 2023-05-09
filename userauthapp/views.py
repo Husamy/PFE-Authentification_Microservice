@@ -5,8 +5,8 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.shortcuts import render
 from rest_framework import generics 
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin ,CreateModelMixin
-from .models import CustomUser , organisation , Requestjoin , Invitation
-from .serializers import CustomUserSerializer ,OrganisationMemberSerializer,InvitationUpdateSerializer,OrganisationSerializer , InvitationjoinSerializer , RequestjoinSerializer , RequestUpdateSerializer
+from .models import CustomUser , organisation , Requestjoin , Invitation, keys
+from .serializers import CustomUserSerializer, OrganisationMemberSerializer,CustomUserUpdateSerializer , InvitationUpdateSerializer,OrganisationSerializer , InvitationjoinSerializer , RequestjoinSerializer , RequestUpdateSerializer, keysSerializer
 from rest_framework import status
 from rest_framework.response import Response
 from .serializers import UserLoginSerializer
@@ -18,6 +18,18 @@ from rest_framework import permissions
 import os
 from django.shortcuts import get_object_or_404
 from rest_framework.generics import GenericAPIView,  UpdateAPIView
+from rest_framework import generics, status
+from rest_framework.response import Response
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.backends import default_backend
+from django.shortcuts import get_object_or_404
+from django.core import serializers
+
+
+
 
 class IsOwner(permissions.BasePermission):
   
@@ -75,28 +87,54 @@ class CustomUserApi(generics.GenericAPIView, CreateModelMixin, ListModelMixin):
     queryset = CustomUser.objects.all()
     serializer_class = CustomUserSerializer
 
+    def get_object(self):
+        return CustomUser.objects.filter(id=self.request.user.id)
+
     def get(self, request, *args, **kwargs):
-        return self.list(request, *args, **kwargs)
+        queryset = self.get_object()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def post(self, request):
         # Create a new user account
         serializer = CustomUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = serializer.save()
+        
+        
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
+        public_key = private_key.public_key()
+        
+        publicKey = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode('utf-8')
+        
+        privateKey = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ).decode('utf-8')
+        
+        keys_obj = keys.objects.create(user_id=user , privateKey=privateKey, publicKey=publicKey)
+        
 
         # Send the user ID and email address to the timestamp microservice
-        host_ip = os.environ.get('HOST_IP')
-        action = 'User Created'
-        email = serializer.data['email']
-        timestamp_data = {'action': action, 'email': email}
-        timestamp_url = 'http://'+str(host_ip)+':8001/api/create/'
-        response = requests.post(timestamp_url, data=timestamp_data)
+       
 
         # Return a JSON response indicating success
         return Response(serializer.data, status=201)
 
 
+class keysAPI(generics.ListAPIView):
+    queryset = keys.objects.all()
+    serializer_class = keysSerializer
+    permission_classes=[IsAuthenticated,]
 
+    
 
 
 
@@ -111,7 +149,7 @@ class PersonalUserAPI(generics.GenericAPIView, RetrieveModelMixin):
 
 class CustomUserUpdateApi(generics.UpdateAPIView):
     queryset = CustomUser.objects.all()
-    serializer_class = CustomUserSerializer
+    serializer_class = CustomUserUpdateSerializer
     lookup_field = 'email'
 
     def get_object(self):
@@ -127,11 +165,9 @@ class CustomUserUpdateApi(generics.UpdateAPIView):
 
     def put(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.organisation = request.data.get('organisation')
-        instance.save()
-
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
 
 
 
@@ -140,13 +176,25 @@ class InvitationDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Invitation.objects.all()
     serializer_class = InvitationjoinSerializer
     permission_classes = [IsOwner]
-    ''' action = 'Invitation Deleted'
-    host_ip = os.environ.get('HOST_IP')
-    timestamp_data = {'action': action, 'owner': , 'organisation': organisation.name}
-    timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg'
-    response = requests.post(timestamp_url, data=timestamp_data)'''
+    
+    
 
-class InvitaionUpdate(generics.RetrieveUpdateAPIView):
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        action = 'Invitation Deleted'
+        host_ip = os.environ.get('HOST_IP')
+        token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+        headers = {'Authorization': f'Bearer {token}'}
+        timestamp_data = {'action': action, organisation: instance.organisation.name}
+        timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+        response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    
+    
+
+class InvitaionUpdate(generics.RetrieveUpdateDestroyAPIView):
     queryset = Invitation.objects.all()
     serializer_class = InvitationUpdateSerializer
     permission_classes = [permissions.IsAuthenticated, IsGuest]
@@ -172,9 +220,11 @@ class InvitaionUpdate(generics.RetrieveUpdateAPIView):
 
             action = 'Request Accepted'
             host_ip = os.environ.get('HOST_IP')
-            timestamp_data = {'action': action, 'owner': custom_user.email, 'organisation': organisation.name}
-            timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg'
-            response = requests.post(timestamp_url, data=timestamp_data)
+            token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+            headers = {'Authorization': f'Bearer {token}'}
+            timestamp_data = {'action': action, organisation: instance.organisation.name}
+            timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+            response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
 
             # Update the organisation field in CustomUser model
             
@@ -186,14 +236,18 @@ class InvitaionUpdate(generics.RetrieveUpdateAPIView):
             instance.save()
             action = 'Request Rejected'
             host_ip = os.environ.get('HOST_IP')
-            timestamp_data = {'action': action, 'owner': custom_user.email, 'organisation': organisation.name}
-            timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg/'
-            response = requests.post(timestamp_url, data=timestamp_data)
+            token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+            headers = {'Authorization': f'Bearer {token}'}
+            timestamp_data = {'action': action, organisation: instance.organisation.name}
+            timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+            response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
 
             return Response(status=status.HTTP_200_OK)
 
         else:
             return Response({'request_status': 'Request status must be either Rejected or Accepted'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        
 
         
 
@@ -220,10 +274,11 @@ class InvitationJoin(generics.ListCreateAPIView):
         # Send a timestamp to the organisation service
         host_ip = os.environ.get('HOST_IP')
         action = 'Invitation Send'
-        timestamp_data = {'action': action, 'owner': str(self.request.user.email), 'organisation': org.name}
-        timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg/'
-        response = requests.post(timestamp_url, data=timestamp_data)
-
+        token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+        headers = {'Authorization': f'Bearer {token}'}
+        timestamp_data = {'action': action, organisation: org.name}
+        timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+        response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class RequestJoin(generics.ListCreateAPIView):
@@ -257,8 +312,11 @@ class RequestJoin(generics.ListCreateAPIView):
         # Send a timestamp to the organisation service
         host_ip = os.environ.get('HOST_IP')
         action = 'Request Join'
-        timestamp_data = {'action': action, 'owner': str(requested_by), 'organisation': organisation_name}
-        timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg/'
+        token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+        headers = {'Authorization': f'Bearer {token}'}
+        timestamp_data = {'action': action, organisation: organisation.name}
+        timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+        response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
         response = requests.post(timestamp_url, data=timestamp_data)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -274,7 +332,7 @@ class OrganisationMembersView(generics.ListAPIView):
         member_ids = org.members
 
         # Get the first name, last name, and email of members using the IDs
-        members = CustomUser.objects.filter(id__in=member_ids).values('first_name', 'last_name', 'email')
+        members = CustomUser.objects.filter(id__in=member_ids).values('id','first_name', 'last_name', 'email')
 
         return members
 
@@ -291,13 +349,16 @@ class OrganisationDetail(generics.RetrieveUpdateDestroyAPIView):
 class Organisation(generics.ListCreateAPIView):
     queryset = organisation.objects.all()
     serializer_class = OrganisationSerializer
-
+    
     def perform_create(self, serializer):
         # Check if user already belongs to an organization
         custom_user = self.request.user
         if custom_user.organisation:
             return Response({'error': 'User already belongs to an organization'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Set the member field to a list containing the id of the requesting user
+        serializer.validated_data['members'] = [custom_user.id]
+        
         serializer.save()
         # Update User Model (admin)
         organisation = serializer.instance
@@ -309,10 +370,19 @@ class Organisation(generics.ListCreateAPIView):
         host_ip = os.environ.get('HOST_IP')
         timestamp_data = {'action': action, 'owner': custom_user.email, 'organisation': serializer.instance.name}
         timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg/'
-        response = requests.post(timestamp_url, data=timestamp_data)
-
+        auth_header = self.request.headers.get("Authorization")
+        token = auth_header.split(" ")[1]
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.post(timestamp_url, data=timestamp_data,headers=headers)
+    
     def get_queryset(self):
-        return organisation.objects.filter(owner=self.request.user)
+        user_id = self.request.user.id
+        print(self.request.user.id)
+        user =  CustomUser.objects.get(id=user_id)
+        print(user)
+        print('hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh')
+        org = user.organisation
+        return organisation.objects.filter(name=org)
 
 
 class RequestUpdate(generics.RetrieveUpdateAPIView):
@@ -342,9 +412,11 @@ class RequestUpdate(generics.RetrieveUpdateAPIView):
 
             action = 'Request Accepted'
             host_ip = os.environ.get('HOST_IP')
-            timestamp_data = {'action': action, 'owner': custom_user.email, 'organisation': organisation.name}
-            timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg'
-            response = requests.post(timestamp_url, data=timestamp_data)
+            token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+            headers = {'Authorization': f'Bearer {token}'}
+            timestamp_data = {'action': action, organisation: organisation.name}
+            timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+            response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
 
             # Update the organisation field in CustomUser model
             
@@ -356,9 +428,11 @@ class RequestUpdate(generics.RetrieveUpdateAPIView):
             instance.save()
             action = 'Request Rejected'
             host_ip = os.environ.get('HOST_IP')
-            timestamp_data = {'action': action, 'owner': custom_user.email, 'organisation': organisation.name}
-            timestamp_url = 'http://' + str(host_ip) + ':8001/api/createorg'
-            response = requests.post(timestamp_url, data=timestamp_data)
+            token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+            headers = {'Authorization': f'Bearer {token}'}
+            timestamp_data = {'action': action, organisation: organisation.name}
+            timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+            response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
 
             return Response(status=status.HTTP_200_OK)
 
@@ -380,9 +454,11 @@ class RequestDestroy(generics.RetrieveDestroyAPIView):
         
         action = 'Request Deleted'
         host_ip = os.environ.get('HOST_IP')
-        timestamp_data = {'action': action, 'owner': serialized_data['user'], 'organisation_id': serialized_data['organisation_id']}
-        timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg'
-        response = requests.post(timestamp_url, data=timestamp_data)
+        token = self.request.META.get('HTTP_AUTHORIZATION', '').split(' ')[1]
+        headers = {'Authorization': f'Bearer {token}'}
+        timestamp_data = {'action': action, organisation: instance.organisation.name}
+        timestamp_url = 'http://'+str(host_ip)+':8001/api/createorg/'
+        response = requests.post(timestamp_url, data=timestamp_data, headers=headers)
 
         self.perform_destroy(instance)
 
