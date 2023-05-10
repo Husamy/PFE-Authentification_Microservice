@@ -72,10 +72,13 @@ class RequestjoinSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
    
     def to_representation(self, instance):
-        if self.context['request'].method == 'GET':
-            self.fields['requested_by'] = serializers.CharField()
-        else:
-            self.fields.pop('requested_by', None)
+        if hasattr(self.context, 'request'):
+            if self.context['request'].method == 'GET':
+                self.fields['requested_by'] = serializers.CharField()
+            elif self.context['request'].method == 'DELETE':
+                pass
+            else:
+                self.fields.pop('requested_by', None)
         
         return super().to_representation(instance)
 

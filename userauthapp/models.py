@@ -28,8 +28,8 @@ class keys(models.Model):
 
 class organisation(models.Model):
     name = models.CharField(max_length=30, unique=True)
-    country_name = models.CharField(max_length=2)
-    state_or_province_name = models.CharField(max_length=2)
+    country_name = models.CharField(max_length=30)
+    state_or_province_name = models.CharField(max_length=30)
     locality_name = models.CharField(max_length=30)
     description = models.CharField(max_length=300)
     owner = models.ForeignKey('CustomUser', on_delete=models.CASCADE, related_name='owned_organisations', to_field='email')

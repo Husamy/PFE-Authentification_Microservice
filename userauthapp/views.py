@@ -326,7 +326,12 @@ class OrganisationMembersView(generics.ListAPIView):
 
     def get_queryset(self):
         # Get the organisation object where the owner is the logged in user
-        org = organisation.objects.get(owner=self.request.user)
+        user_id = self.request.user.id
+        print(self.request.user.id)
+        user =  CustomUser.objects.get(id=user_id)
+        print(user)
+        print('hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh')
+        org = user.organisation
 
         # Get the list of member IDs for the organisation
         member_ids = org.members
@@ -340,6 +345,7 @@ class OrganisationMembersView(generics.ListAPIView):
         queryset = self.get_queryset()
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
+    
     
 class OrganisationDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = organisation.objects.all()
