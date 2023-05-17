@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Get the IP address of the Docker host
-HOST_IP=$(ifconfig eth0 | awk '/inet /{print substr($2,1)}')
+HOST_IP=$(hostname -I | awk '{print $1}')
 
 # Find the line in the Docker Compose file that sets the HOST_IP variable
 LINE=$(grep -n "HOST_IP=" docker-compose.yml | cut -d: -f1)

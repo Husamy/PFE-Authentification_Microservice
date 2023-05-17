@@ -45,19 +45,23 @@ class CustomUserSerializer(serializers.ModelSerializer):
 class CustomUserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields =  ['first_name', 'last_name', 'organisation', 'password']  
+        fields =  ['first_name', 'last_name']  
 class OrganisationSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.email')
     class Meta:
         model = organisation
-        fields = ('id', 'name', 'description', 'members', 'owner', 'country_name', 'state_or_province_name', 'locality_name',)
+        fields = ('id', 'name', 'description', 'members', 'owner', 'country_name', 'state_or_province_name', 'locality_name')
 
     def create(self, validated_data):
         validated_data['owner'] = self.context['request'].user
         return super().create(validated_data)
     
-    def get_queryset(self):
-        return organisation.objects.filter(owner=self.request.user)
+class OrganisationSerializerUpdate(serializers.ModelSerializer):
+    class Meta:
+        model = organisation
+        fields = ('id')
+    
+    
     
     
 class RequestjoinSerializer(serializers.ModelSerializer):
@@ -93,6 +97,7 @@ class keysSerializer(serializers.ModelSerializer):
         fields = ('privateKey', 'publicKey', 'user_id')
     
     def get_queryset(self):
+        organisation.objects.filter()
         return keys.objects.filter(user_id=self.request.user)
 
 

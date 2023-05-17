@@ -6,7 +6,7 @@ from django.shortcuts import render
 from rest_framework import generics 
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin ,CreateModelMixin
 from .models import CustomUser , organisation , Requestjoin , Invitation, keys
-from .serializers import CustomUserSerializer, OrganisationMemberSerializer,CustomUserUpdateSerializer , InvitationUpdateSerializer,OrganisationSerializer , InvitationjoinSerializer , RequestjoinSerializer , RequestUpdateSerializer, keysSerializer
+from .serializers import CustomUserSerializer, OrganisationSerializerUpdate, OrganisationMemberSerializer,CustomUserUpdateSerializer , InvitationUpdateSerializer,OrganisationSerializer , InvitationjoinSerializer , RequestjoinSerializer , RequestUpdateSerializer, keysSerializer
 from rest_framework import status
 from rest_framework.response import Response
 from .serializers import UserLoginSerializer
@@ -35,7 +35,20 @@ class IsOwner(permissions.BasePermission):
   
     def has_object_permission(self, request, view, obj):
         # Check if the authenticated user is the owner of the organization
-        return obj.organisation.owner == request.user
+        
+        return str(obj.organisation.owner) == str(request.user.email)
+    
+    
+class IsOrgOwner(permissions.BasePermission):
+  
+    def has_object_permission(self, request, view, obj):
+        print('11111111111111111111111111111111111')
+        print(obj)
+        print(type(obj.owner))
+        print(request.user)
+        print(type(request.user.email))
+        # Check if the authenticated user is the owner of the organization
+        return str(obj.owner) == str(request.user.email)
 
 class IsGuest(permissions.BasePermission):
 
@@ -155,8 +168,9 @@ class CustomUserUpdateApi(generics.UpdateAPIView):
     def get_object(self):
         queryset = self.filter_queryset(self.get_queryset())
 
+        print(self.request.user)
         # Get the email from the request data
-        email = self.request.data.get('email')
+        email = self.request.user.email
 
         # Lookup the object based on email
         obj = get_object_or_404(queryset, email=email)
@@ -168,6 +182,7 @@ class CustomUserUpdateApi(generics.UpdateAPIView):
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(serializer.data)
 
 
 
@@ -346,11 +361,32 @@ class OrganisationMembersView(generics.ListAPIView):
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
     
-    
+class DeleteMember(generics.RetrieveUpdateAPIView):
+    queryset = organisation.objects.all()
+    serializer_class = OrganisationSerializerUpdate
+    permission_classes = [IsOrgOwner]
+
+    def update(self, request, *args, **kwargs):
+        member = request.data['user_id']
+        org_id = self.kwargs.get('id')
+        instance = self.get_object()
+        print(instance)
+        instance.members.remove(member)
+        print(instance.members)
+        instance.save()
+        
+        custom_user_obj = CustomUser.objects.get(id=member)
+        custom_user_obj.organisation = None
+        custom_user_obj.save()
+        
+        return Response(status=status.HTTP_200_OK)
+        
+
+  
 class OrganisationDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = organisation.objects.all()
     serializer_class = OrganisationSerializer
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsOrgOwner,]
 
 class Organisation(generics.ListCreateAPIView):
     queryset = organisation.objects.all()
@@ -382,11 +418,12 @@ class Organisation(generics.ListCreateAPIView):
         response = requests.post(timestamp_url, data=timestamp_data,headers=headers)
     
     def get_queryset(self):
-        user_id = self.request.user.id
-        print(self.request.user.id)
-        user =  CustomUser.objects.get(id=user_id)
+        print('hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh')
+        print(self.request.user)
+        user_email = self.request.user.email
+        print(self.request.user.email)
+        user =  CustomUser.objects.get(email=user_email)
         print(user)
-        print('hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh')
         org = user.organisation
         return organisation.objects.filter(name=org)
 
@@ -394,7 +431,7 @@ class Organisation(generics.ListCreateAPIView):
 class RequestUpdate(generics.RetrieveUpdateAPIView):
     queryset = Requestjoin.objects.all()
     serializer_class = RequestUpdateSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwner]
+    permission_classes = [IsOwner]
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=kwargs.get('partial', False))

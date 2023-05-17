@@ -47,6 +47,14 @@ INSTALLED_APPS = [
     'corsheaders'
 ]
 
+
+
+SIMPLE_JWT = {"SIGNING_KEY": "5ahp8kseKOVB_w"}
+
+
+
+
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
